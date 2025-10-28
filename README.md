@@ -7,9 +7,9 @@
 
 ## 1. Problem Significance
 
-**Cloud composition is critical in climate modeling and weather prediction**, as the phase of water (liquid, solid, or mixed) governs fundamental physical processes like solar radiation transfer (albedo), energy exchange, and precipitation formation.
+**Cloud composition is critical in climate modeling and weather prediction**, as the phase of water governs fundamental physical processes like solar radiation transfer (albedo), energy exchange, and precipitation formation.
 
-The **NSF/NCAR Research Aviation Facility** utilizes airborne instruments, such as the **Two-Dimensional, Stereo, Particle Imaging Probe (2D-S)**, which captures a **binary 2D image** (shadowgraph) of particles. This provides high-resolution data on size and complex shape.
+The **NSF/NCAR Research Aviation Facility** utilizes airborne instruments, such as the **Two-Dimensional, Stereo, Particle Imaging Probe (2D-S)**, which captures a **binary 2D image** of particles. This provides high-resolution data on size and complex shape.
 
 * **Definitive Phases:** Above 0-1 °C, particles are assumed liquid (water). Below -40 °C, they are assumed solid (ice).
 * **Mixed-Phase:** Between these values is the **mixed-phase range**, where supercooled water and ice particles coexist, and thus we are unable to assume the particle state.
@@ -32,7 +32,7 @@ The core objective is a **Binary Classification** task for particle-by-particle 
 
 We will employ a **Hybrid Convolutional Neural Network (CNN)** architecture to simultaneously process both data types:
 
-1.  **Image Branch (CNN):** The $\mathbf{64 \times 64}$ image is fed into a Convolutional Network. This branch automatically learns complex **morphological features** (e.g., jagged edges, internal structure) from the image shadow.
+1.  **Image Branch (CNN):** The $\mathbf{128 \times 128}$ image is fed into a Convolutional Network. This branch automatically learns complex **morphological features** (e.g., jagged edges, internal structure) from the image shadow.
 2.  **Tabular Branch (Fully Connected):** The scalar features are input into a smaller, fully-connected (Dense) network (e.g., temperature dependence).
 3.  **Prediction:** The high-level feature vectors from both branches are **concatenated** and passed to a final classifier to produce the **binary prediction** (0: Water, 1: Ice).
 
@@ -60,19 +60,19 @@ The model will be trained on particles in the defined phases (e.g., $T > 0\ ^\ci
 
 | Component | Status | Next Step |
 | :--- | :--- | :--- |
-| **Data Access** | NetCDF particle-by-particle and state variables loaded (`dc`) | Merge state variables and particle data; generate ground truth labels. |
-| **Pre-processing** | Code ready for image slicing and standardization (to $64 \times 64$). | Apply standardization function to all $3.75$ million images. |
-| **Model Choice** | Hybrid CNN Architecture defined. | Implement and train the Hybrid CNN model. |
+| **Data Access** | NetCDF particle-by-particle and state variables loaded (`ds`) | Merge state variables and particle data; generate ground truth labels for data in definitive liqud or ice phase. |
+| **Pre-processing** | Code tested for image slicing and standardization (to $128 \times 128$). | Define output image format and apply standardization function to all $3.75$ million images. |
+| **Model Choice** | Hybrid CNN Architecture. | Define input variables for the Hybrid CNN model. |
 
 ---
 
 ## Appendix B: Key Feature Variables
-
+_work in progress_
 | Variable | Type | Role |
 | :--- | :--- | :--- |
-| $\mathbf{image}$ | Array (1281284) | Primary input for CNN; provides detailed shape morphology. |
-| $\mathbf{ATX}$ | Continuous | Critical for labeling and contextual classification. |
-| $\mathbf{aspectratio}$ | Continuous | Particle shape metric (Tabular input). |
-| $\mathbf{diam}$ | Continuous | Particle size metric (Tabular input). |
-| $\mathbf{TAS}$ | Continuous | True Air Speed (TAS) for environmental context ($\text{m/s}$). |
-| $\mathbf{GGALT}$ | Continuous | GPS altitude ($\text{m}$). |
+| $\mathbf{image}$ | | Primary input for CNN |
+| $\mathbf{ATX}$ |  | Air temperature (ATX) critical for labeled data for training ($\text{°C}$).  |
+| $\mathbf{aspectratio}$ |  | Particle shape metric (Tabular input). |
+| $\mathbf{diam}$ |  | Particle size metric (Tabular input). |
+| $\mathbf{TAS}$ |  | True Air Speed (TAS) for environmental context ($\text{m/s}$). |
+| $\mathbf{GGALT}$ |  | GPS altitude ($\text{m}$). |
