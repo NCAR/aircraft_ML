@@ -10,9 +10,19 @@ The `process_particle_data.py` script is a clean, production-ready version of yo
 4. ✅ Creates **metadata CSV** for CNN training
 5. ✅ Well-documented and configurable
 
+The `synthetic_preprocessing.py` script is the synthetic-data version of the pipeline that:
+
+1. ✅ Processes synthetic NetCDF files in `Data/`
+2. ✅ Splits data by filename: `Liquid` files go to liquid, `ice` and `Column` files go to ice
+3. ✅ Exports standardized **128×128 particle images**
+4. ✅ Creates `synthetic_particle_metadata.csv`
+5. ✅ Does **not** apply donut filtering or rectangle filtering
+
 ---
 
 ## Quick Start
+
+### F2DS processing
 
 ```bash
 cd /Users/srunkel/dev/aircraft_ML
@@ -24,6 +34,19 @@ The script will:
 - Apply quality filters
 - Export images to `particle_images_filtered/liquid/` and `particle_images_filtered/solid/`
 - Create `particle_metadata.csv`
+
+### Synthetic processing
+
+```bash
+cd /Users/srunkel/dev/aircraft_ML
+python3 synthetic_preprocessing.py
+```
+
+The script will:
+- Load synthetic `.nc` files from the `Data/` directory
+- Classify files by name: `Liquid` -> liquid, `ice` / `Column` -> ice
+- Export images to `synthetic_particle_images_filtered/liquid/` and `synthetic_particle_images_filtered/ice/`
+- Create `synthetic_particle_metadata.csv`
 
 ---
 
@@ -114,6 +137,33 @@ REQUIRE_DOF = True          # In depth of field
 ---
 
 ## Output
+
+### Synthetic Output
+
+```
+synthetic_particle_images_filtered/
+├── liquid/
+│   ├── particle_0.png
+│   ├── particle_1.png
+│   └── ...
+└── ice/
+    ├── particle_90741.png
+    ├── particle_90742.png
+    └── ...
+```
+
+### Synthetic Metadata CSV
+`synthetic_particle_metadata.csv` contains:
+- `Time`: Timestamp, if present in the NetCDF file
+- `particle_idx_seq`: Particle number (matches image filename)
+- `phase`: 0=liquid, 1=ice
+- `phase_name`: `liquid` or `ice`
+- `source_file`: Source NetCDF filename
+- `source_group`: Lowercase filename label used for routing
+- `diam`: Diameter (microns)
+- `aspectratio`: Aspect ratio
+- `arearatio`: Area ratio (solid vs. filled)
+- `arearatiofilled`: Area ratio filled
 
 ### Directory Structure
 ```
