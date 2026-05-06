@@ -36,45 +36,18 @@ Labels are derived from the concurrent environmental netCDF (ATX variable). Part
 aircraft_ML/
 │
 ├── README.md                               ← this file
-│
-├── ── Data ──────────────────────────────────────────────────────────
-│
-├── Data/
-│   ├── *_F2DS_V.pbp.nc                     raw particle-by-particle (vertical probe)
-│   ├── *_F2DS_H.pbp.nc                     raw particle-by-particle (horizontal probe)
-│   └── RF02.*.PNI.nc                       environmental state variables (ATX, etc.)
-│
-├── cgwaves_particle_images_filtered/       pre-processed images from CGWaveS RF02
-│   ├── liquid/                             2,302 images (phase = 0)
-│   ├── solid/                              1,950 images (phase = 1)
-│   ├── donut/                              2,230 images (phase = 2, artifacts)
-│   ├── noise/                                700 images (phase = 3, artifacts)
-│   ├── particle_df.csv                     particle metadata + phase labels
-│   └── particle_phases.csv                 phase + UTC time index
+├── PROCESSING_README.md                    preprocessing notes and data details
 │
 ├── ── Preprocessing ─────────────────────────────────────────────────
 │
 ├── process_particle_data.py                MAIN preprocessing script
 │                                           raw PBP netCDF → 128×128 PNG images
 │                                           + particle_df.csv
-│
-├── particle_quality_filters.py             image-space quality filter functions
-│                                           (hollow center, rectangle, sparse, edge)
-│
-├── auto_sort_particles.py                  heuristic sorter — moves donut/noise
-│                                           particles to separate directories
-│
-├── update_particle_phases.py               updates phase labels in CSV from
-│                                           directory structure after manual sorting
-│
-├── pbp_preprocessing.ipynb                 exploratory preprocessing notebook
-│                                           (loads PBP netCDF, extracts UTC times)
-│
-├── pbp_plotting.ipynb                      exploratory visualization of PBP data
+├── synthetic_preprocessing.py              preprocessing script for synthetic particles
 │
 ├── ── Model Training ────────────────────────────────────────────────
 │
-├── particle_classification_final.ipynb     ★ PRIMARY training notebook
+├── particle_classification_ablation_study.ipynb  ★ PRIMARY training notebook
 │                                           ablation study: image-only vs.
 │                                           features-only vs. hybrid CNN
 │                                           5-fold CV + 5 seeds + significance tests
@@ -94,19 +67,13 @@ aircraft_ML/
 │                                           → phase classifier
 │                                           → CSV + time-series plots
 │
-├── ── Supporting / Historical ───────────────────────────────────────
+├── ── Historical / Reference ────────────────────────────────────────
 │
 ├── particle_classification_CNN.ipynb       earlier 4-class hybrid CNN iteration
 ├── particle_classification_CNN_image.ipynb earlier image-only 4-class CNN
-├── particle_classification_ablation_study.ipynb  earlier ablation framework
-│                                           (superseded by _final.ipynb)
-├── Runkel_Lab6.ipynb                       reference CNN example (ship/iceberg)
 │
-├── process_particle_data_xarray.py         xarray-based variant of preprocessing
-├── process_particle_data_backup.py         backup of preprocessing script
-├── particle_quality_filters_fixed.py       updated quality filter functions
-├── test_feature_leakage.py                 validates no data leakage in features
-├── synthetic_preprocessing.py             synthetic particle generation (validation)
+├── old_files/                              archived scripts and notebooks
+│                                           (no longer part of active pipeline)
 │
 └── ── Saved Artifacts (generated on first run) ──────────────────────
     ├── ablation_results/                   trained phase models (*.keras)
@@ -135,7 +102,7 @@ This reads raw PBP netCDF files, applies quality filters, extracts 128×128 PNG 
 
 ### Step 2 — Train the phase classifier
 
-Open and run **`particle_classification_final.ipynb`** top to bottom.
+Open and run **`particle_classification_ablation_study.ipynb`** top to bottom.
 
 - Trains three model variants (hybrid, image-only, features-only) across 5 seeds
 - Performs statistical significance testing between models
