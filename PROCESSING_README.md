@@ -1,345 +1,223 @@
-# Particle Data Processing Script
+# Particle Data Preprocessing
 
-## Overview
-
-The `process_particle_data.py` script is a clean, production-ready version of your particle processing pipeline that:
-
-1. ✅ Processes **both F2DS probe files** (V and H orientations)
-2. ✅ Applies **improved quality filters** (rectangles, donuts, edge artifacts)
-3. ✅ Exports standardized **128×128 particle images**
-4. ✅ Creates **metadata CSV** for CNN training
-5. ✅ Well-documented and configurable
-
-The `synthetic_preprocessing.py` script is the synthetic-data version of the pipeline that:
-
-1. ✅ Processes synthetic NetCDF files in `Data/`
-2. ✅ Splits data by filename: `Liquid` files go to liquid, `ice` and `Column` files go to ice
-3. ✅ Exports standardized **128×128 particle images**
-4. ✅ Creates `synthetic_particle_metadata.csv`
-5. ✅ Does **not** apply donut filtering or rectangle filtering
+This document covers how to run the two preprocessing scripts that convert raw netCDF probe files into the image and metadata format expected by the training notebooks.
 
 ---
 
-## Quick Start
+## Scripts
 
-### F2DS processing
+### `process_particle_data.py`
+
+Processes real F2DS probe data (PBP netCDF files). Applies quality filters, extracts standardized 128x128 particle images, and writes a metadata CSV for training.
+
+### `synthetic_preprocessing.py`
+
+Processes synthetic netCDF files simulating 2D-S instrument output. Assigns phase labels based on filename, extracts 128x128 images, and writes a metadata CSV. Does not apply donut or rectangle filters since the synthetic data does not contain those artifact types.
+
+---
+
+## Running the Scripts
+
+### F2DS (real flight data)
+
+Place the raw PBP netCDF files in the `Data/` directory, then run:
 
 ```bash
-cd /Users/srunkel/dev/aircraft_ML
 python3 process_particle_data.py
 ```
 
-The script will:
-- Load both `.pbp.nc` files from the `Data/` directory
-- Apply quality filters
-- Export images to `particle_images_filtered/liquid/` and `particle_images_filtered/solid/`
-- Create `particle_metadata.csv`
+This will:
+1. Load both `.pbp.nc` probe files (vertical and horizontal orientations) from `Data/`
+2. Apply quality filters (size, shape, donut, rectangle, edge)
+3. Export 128x128 grayscale PNG images to `particle_images_filtered/liquid/` and `particle_images_filtered/solid/`
+4. Write `particle_df.csv` with per-particle metadata and labels
 
-### Synthetic processing
+### Synthetic data
+
+Place the synthetic `.nc` files in the `Data/` directory, then run:
 
 ```bash
-cd /Users/srunkel/dev/aircraft_ML
 python3 synthetic_preprocessing.py
 ```
 
-The script will:
-- Load synthetic `.nc` files from the `Data/` directory
-- Classify files by name: `Liquid` -> liquid, `ice` / `Column` -> ice
-- Export images to `synthetic_particle_images_filtered/liquid/` and `synthetic_particle_images_filtered/ice/`
-- Create `synthetic_particle_metadata.csv`
-
----
-
-## What's New/Improved
-
-### 1. **Improved Rectangle Filter**
-
-The previous filter missed some rectangles. The new filter detects rectangles using:
-
-```python
-# Rectangles have:
-# - High arearatiofilled (fill their bounding box)
-# - Low aspect ratio (long/thin shape)
-~(
-    (ds['arearatiofilled'] >= 0.90) &  # Fills 90%+ of bounding box
-    (ds['aspectratio'] < 0.15)          # Long/thin
-)
-```
-
-This catches edge artifacts like particle_700 that are:
-- Thin vertical/horizontal lines
-- Fill most of their bounding box
-- Have very low aspect ratio
-
-### 2. **Smart Donut Filter**
-
-Only filters out-of-focus donuts, not ice crystals with gaps:
-
-```python
-# Only reject particles that are ALL of:
-~(
-    (ds['diam'] >= 200) &           # Large
-    (ds['arearatio'] < 0.80) &      # Hollow
-    (ds['aspectratio'] < 0.25)      # Circular
-)
-```
-
-### 3. **Processes Both Probes**
-
-Automatically processes:
-- `20250524_022503_F2DS_V.pbp.nc` (Vertical orientation)
-- `20250524_022503_F2DS_H.pbp.nc` (Horizontal orientation)
-
-Combines particles from both into single dataset.
-
-### 4. **Clean Code Structure**
-
-- Clear configuration section at top
-- Well-documented functions
-- Progress indicators
-- Comprehensive statistics
-
----
-
-## Configuration
-
-All parameters are at the top of the script. Easy to tune:
-
-### Size Filters
-```python
-MIN_DIAMETER = 100          # microns
-MAX_DIAMETER = 5000         # microns
-MIN_AREA = 50              # pixels
-```
-
-### Rectangle Detection
-```python
-MIN_ASPECT_RATIO = 0.05     # Reject perfect rectangles
-MAX_ASPECT_RATIO = 0.97     # Reject near-perfect rectangles
-MIN_AREARATIO_FILLED = 0.90 # Rectangle fill ratio
-```
-
-### Donut Detection
-```python
-DONUT_MIN_SIZE = 200        # Only check large particles
-DONUT_MAX_AREARATIO = 0.80  # Hollow threshold
-DONUT_MAX_ASPECT = 0.25     # Circular shape
-```
-
-### Quality Flags
-```python
-ALLOW_EDGE_TOUCH = False    # Reject edge particles
-REQUIRE_ALLIN = True        # Only fully in view
-REQUIRE_CENTERIN = True     # Center in view
-REQUIRE_DOF = True          # In depth of field
-```
+This will:
+1. Discover all `.nc` files in `Data/` and assign labels by filename: files containing `Liquid` go to liquid (phase 0), files containing `ice` or `Column` go to ice (phase 1)
+2. Export 128x128 grayscale PNG images to `synthetic_particle_images_filtered/liquid/` and `synthetic_particle_images_filtered/ice/`
+3. Write `synthetic_particle_metadata.csv`
 
 ---
 
 ## Output
 
-### Synthetic Output
+### F2DS output
+
+Images are saved as:
+
+```
+particle_images_filtered/
+    liquid/
+        particle_0.png
+        particle_1.png
+        ...
+    solid/
+        particle_90741.png
+        ...
+```
+
+`particle_df.csv` columns:
+
+| Column | Description |
+| --- | --- |
+| `Time` | UTC timestamp |
+| `particle_idx_seq` | Particle index — matches the image filename number |
+| `phase` | 0 = liquid, 1 = solid |
+| `diam` | Diameter (microns) |
+| `aspectratio` | Aspect ratio (minor / major axis) |
+| `arearatio` | Area ratio (solid vs. filled bounding box) |
+| `arearatiofilled` | Filled area ratio |
+
+### Synthetic output
+
+Images are saved as:
 
 ```
 synthetic_particle_images_filtered/
-├── liquid/
-│   ├── particle_0.png
-│   ├── particle_1.png
-│   └── ...
-└── ice/
-    ├── particle_90741.png
-    ├── particle_90742.png
-    └── ...
+    liquid/
+        particle_0.png
+        ...
+    ice/
+        particle_90741.png
+        ...
 ```
 
-### Synthetic Metadata CSV
-`synthetic_particle_metadata.csv` contains:
-- `Time`: Timestamp, if present in the NetCDF file
-- `particle_idx_seq`: Particle number (matches image filename)
-- `phase`: 0=liquid, 1=ice
-- `phase_name`: `liquid` or `ice`
-- `source_file`: Source NetCDF filename
-- `source_group`: Lowercase filename label used for routing
-- `diam`: Diameter (microns)
-- `aspectratio`: Aspect ratio
-- `arearatio`: Area ratio (solid vs. filled)
-- `arearatiofilled`: Area ratio filled
+`synthetic_particle_metadata.csv` columns:
 
-### Directory Structure
-```
-particle_images_filtered/
-├── liquid/
-│   ├── particle_0.png
-│   ├── particle_1.png
-│   └── ...
-└── solid/
-    ├── particle_90741.png
-    ├── particle_90742.png
-    └── ...
-```
-
-### Metadata CSV
-`particle_metadata.csv` contains:
-- `Time`: Timestamp
-- `particle_idx_seq`: Particle number (matches image filename)
-- `phase`: 0=liquid, 1=solid
-- `diam`: Diameter (microns)
-- `aspectratio`: Aspect ratio
-- `arearatio`: Area ratio (solid vs. filled)
-- `arearatiofilled`: Area ratio filled
+| Column | Description |
+| --- | --- |
+| `Time` | Timestamp, if present in the netCDF file |
+| `global_particle_id` | Unique particle ID across all files — matches the image filename number |
+| `phase` | 0 = liquid, 1 = ice |
+| `phase_name` | `liquid` or `ice` |
+| `source_file` | Source netCDF filename |
+| `diam` | Diameter (microns) |
+| `aspectratio` | Aspect ratio |
+| `arearatio` | Area ratio |
+| `arearatiofilled` | Filled area ratio |
 
 ---
 
-## Expected Results
+## Quality Filters (F2DS only)
 
-### Before Filtering (Per Probe):
-- ~3.7 million raw particles
-- Many artifacts
+The following filters are applied to the real probe data. A particle is removed if any condition is true:
 
-### After Filtering (Per Probe):
-- ~100,000 quality particles
-- ~10,000-12,000 particles after phase separation
-- ~97-98% artifacts removed
+| Filter | Criterion |
+| --- | --- |
+| Too small | diameter <= 100 microns |
+| Hollow / donut-like | void index >= 0.05 |
+| Near-perfect square | arearatiofilled > 0.95 AND aspectratio > 0.90 |
+| Line-like | aspectratio < 0.20 |
+| Long rectangle | arearatiofilled >= 0.90 AND aspectratio < 0.15 |
 
-### Combined (Both Probes):
-- ~4,000-5,000 liquid particles
-- ~20,000-25,000 solid particles
-- Clean, ready for CNN training
+These thresholds are defined at the top of `process_particle_data.py` and can be adjusted if needed.
 
 ---
 
-## Tuning Guide
+## Configuration
 
-### If too many rectangles remain:
+All tunable parameters are defined at the top of each script.
 
-Make rectangle filter **stricter**:
+### Size filters (`process_particle_data.py`)
+
 ```python
-MIN_AREARATIO_FILLED = 0.85  # Catch more rectangles (was 0.90)
-MAX_ASPECT_RATIO = 0.95       # Stricter (was 0.97)
+MIN_DIAMETER = 100          # microns — particles smaller than this are removed
 ```
 
-### If too many good particles removed:
+### Rectangle detection
 
-Make rectangle filter **more lenient**:
 ```python
-MIN_AREARATIO_FILLED = 0.95  # Only catch very rectangular (was 0.90)
-MIN_ASPECT_RATIO = 0.02       # More lenient (was 0.05)
+MIN_AREARATIO_FILLED = 0.90 # particles filling >= 90% of bounding box flagged as rectangles
+MAX_ASPECT_RATIO     = 0.15 # combined with above to catch long thin artifacts
 ```
 
-### If donuts still getting through:
+### Donut detection
 
-Make donut filter **stricter**:
 ```python
-DONUT_MAX_AREARATIO = 0.85   # Catch less hollow donuts (was 0.80)
-DONUT_MAX_ASPECT = 0.30       # Catch less circular (was 0.25)
+DONUT_MIN_SIZE      = 200   # only check particles larger than this (microns)
+DONUT_MAX_AREARATIO = 0.80  # hollow threshold
+DONUT_MAX_ASPECT    = 0.25  # circular shape threshold
 ```
 
 ---
 
-## Testing Specific Particles
+## Tuning the Filters
 
-Add this at the end of the script to test filtering on specific particles:
+### Too many rectangular artifacts remaining
+
+Tighten the rectangle filter:
 
 ```python
-def test_specific_particle(ds, idx):
-    """Test if a specific particle passes filters"""
+MIN_AREARATIO_FILLED = 0.85  # catch more rectangles (default 0.90)
+```
+
+### Good particles being incorrectly removed
+
+Loosen the rectangle filter:
+
+```python
+MIN_AREARATIO_FILLED = 0.95  # only catch very rectangular shapes
+```
+
+### Donut artifacts passing through
+
+Tighten the donut filter:
+
+```python
+DONUT_MAX_AREARATIO = 0.85   # catch less hollow particles (default 0.80)
+DONUT_MAX_ASPECT    = 0.30   # catch less circular particles (default 0.25)
+```
+
+### Donut filter incorrectly removing ice crystals
+
+Loosen the donut filter:
+
+```python
+DONUT_MIN_SIZE      = 300    # only check larger particles (default 200)
+DONUT_MAX_AREARATIO = 0.70   # require more hollow to flag (default 0.80)
+DONUT_MAX_ASPECT    = 0.20   # require more circular to flag (default 0.25)
+```
+
+---
+
+## Inspecting Individual Particles
+
+To check whether a specific particle passes or fails the filters, add the following to the end of the script:
+
+```python
+def inspect_particle(ds, idx):
     print(f"\nParticle {idx}:")
-    print(f"  Diameter:         {ds['diam'].values[idx]:.1f} μm")
-    print(f"  Aspect ratio:     {ds['aspectratio'].values[idx]:.3f}")
-    print(f"  Area ratio:       {ds['arearatio'].values[idx]:.3f}")
-    print(f"  Area ratio fill:  {ds['arearatiofilled'].values[idx]:.3f}")
-    print(f"  Edge touch:       {ds['edgetouch'].values[idx]}")
+    print(f"  Diameter:        {ds['diam'].values[idx]:.1f} um")
+    print(f"  Aspect ratio:    {ds['aspectratio'].values[idx]:.3f}")
+    print(f"  Area ratio:      {ds['arearatio'].values[idx]:.3f}")
+    print(f"  Area ratio fill: {ds['arearatiofilled'].values[idx]:.3f}")
 
-    # Check rectangle
     is_rectangle = (
-        (ds['arearatiofilled'].values[idx] >= 0.90) &
+        (ds['arearatiofilled'].values[idx] >= 0.90) and
         (ds['aspectratio'].values[idx] < 0.15)
     )
-
-    # Check donut
     is_donut = (
-        (ds['diam'].values[idx] >= 200) &
-        (ds['arearatio'].values[idx] < 0.80) &
+        (ds['diam'].values[idx] >= 200) and
+        (ds['arearatio'].values[idx] < 0.80) and
         (ds['aspectratio'].values[idx] < 0.25)
     )
 
     if is_rectangle:
-        print("  ❌ FILTERED: Rectangle")
+        print("  FILTERED: rectangle artifact")
     elif is_donut:
-        print("  ❌ FILTERED: Donut")
+        print("  FILTERED: donut artifact")
     else:
-        print("  ✅ KEPT")
+        print("  KEPT")
 
-# Test problematic particles
-# test_specific_particle(ds, 700)   # Rectangle
-# test_specific_particle(ds, 9)     # Donut
-# test_specific_particle(ds, 8731)  # Good crystal
+# inspect_particle(ds, 700)    # example: rectangle
+# inspect_particle(ds, 9)      # example: donut
+# inspect_particle(ds, 8731)   # example: legitimate ice crystal
 ```
-
----
-
-## Differences from Original Script
-
-### Original `pbp_plotting.ipynb`:
-- ⚠️ Manual, cell-by-cell execution
-- ⚠️ Only processed one probe file
-- ⚠️ Basic filtering
-- ⚠️ Rectangle filter missed some artifacts
-
-### New `process_particle_data.py`:
-- ✅ Single command execution
-- ✅ Processes both probe files
-- ✅ Enhanced filtering (improved rectangle detection)
-- ✅ Progress indicators
-- ✅ Comprehensive statistics
-- ✅ Production-ready code
-- ✅ Easy to configure and tune
-
----
-
-## Integration with CNN
-
-After running this script, update your CNN notebook to load data:
-
-```python
-# In your CNN notebook
-df = pd.read_csv('particle_metadata.csv')
-
-# Images are in:
-liquid_images_dir = 'particle_images_filtered/liquid/'
-solid_images_dir = 'particle_images_filtered/solid/'
-```
-
-The particle numbers in the CSV match the image filenames!
-
----
-
-## Troubleshooting
-
-### "File not found" error:
-- Check that `Data/` directory contains both `.pbp.nc` files
-- Check that environmental file `RF02.20250524.004127_075522.PNI.nc` exists
-
-### Too few particles:
-- Relax filters (see Tuning Guide above)
-- Check filter statistics in output
-
-### Too many rectangles still present:
-- Decrease `MIN_AREARATIO_FILLED` to 0.85 or 0.80
-- Increase `MAX_ASPECT_RATIO` to 0.95
-
-### Out of memory:
-- Process one probe at a time
-- Reduce batch size when exporting
-
----
-
-## Next Steps
-
-1. Run the script: `python3 process_particle_data.py`
-2. Check output statistics
-3. Visually inspect sample images from both directories
-4. Tune filters if needed
-5. Use `particle_metadata.csv` for CNN training
-
-Good luck with your CNN training!

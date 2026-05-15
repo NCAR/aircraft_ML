@@ -8,13 +8,22 @@ Automated classification of liquid and ice particles from airborne 2D-S probe im
 
 The **NSF/NCAR Research Aviation Facility** uses the [Two-Dimensional Stereo Particle Imaging Probe (2D-S)](https://www.eol.ucar.edu/instruments/two-dimensional-stereo-particle-imaging-probe) to capture binary shadowgraph images of cloud particles during research flights. Determining whether a particle is **liquid** (supercooled water droplet) or **solid** (ice crystal) is straightforward at temperature extremes but difficult in the **mixed-phase range** (−40 °C to +1 °C), where both phases coexist and manual inspection is the only current method.
 
-This project trains a hybrid CNN — combining particle images with a morphological shape feature — to classify particles as liquid or solid, and provides a ready-to-run inference pipeline for applying the model to new flight data.
+This project trains a hybrid CNN — combining particle images with morphological shape features — to classify particles as liquid or solid, and provides a ready-to-run inference pipeline for applying the model to new flight data.
 
 **Key results (CGWaveS RF02 dataset):**
 
-- Hybrid CNN (image + arearatio) outperforms image-only and feature-only baselines
-- Validated with 5-fold cross-validation and 5 random seeds for statistical significance
+- Hybrid CNN (image + arearatio + aspectratio, gated fusion) outperforms image-only and feature-only baselines
+- 93.3% accuracy, validated across 5 random seeds with statistical significance tests
 - A separate lightweight CNN is provided to filter out donut artifacts before phase classification
+- Synthetic particle data pipeline supported, with donut filter applied as pre-training cleanup
+
+### Next Steps
+
+Aaron shared some resources to help us incorporate into our model:
+
+- CNN for holographic imaging probes. Used a method that 'fine-tuned' the model with a small fraction of the target data after pre-training on training data. This reduced the large data needs for the target: https://amt.copernicus.org/articles/13/2219/2020/
+- [A Technique for Habit Classification of Cloud Particles](https://doi.org/10.1175/1520-0426(2000)017%3C1048:ATFHCO%3E2.0.CO;2)
+- Using cloud statistics (instead of pbp statistics) as an input to the model to help with training. For example, in some mixed phase clouds, as they transition, the small particles will melt first, so the area ratio by particle size statistics might tell properties about the cloud. Might help with certain mixed phase scenarios if we have labeled training data. Maybe other grouped statistics can be incorporated.
 
 ---
 
@@ -50,9 +59,16 @@ aircraft_ML/
 ├── particle_classification_ablation_study.ipynb  ★ PRIMARY training notebook
 │                                           ablation study: image-only vs.
 │                                           features-only vs. hybrid CNN
-│                                           5-fold CV + 5 seeds + significance tests
+│                                           5 seeds + significance tests
 │                                           saves → ablation_results/*.keras
 │                                                    data_splits_ablation/*.pkl
+│
+├── hybrid_model_synthetic.ipynb            ★ Train hybrid model on synthetic data
+│                                           applies CNN donut filter before training
+│                                           to remove mislabeled out-of-focus artifacts
+│                                           saves → hybrid_synthetic_results/
+│                                                    hybrid_synthetic_model.keras
+│                                                    scaler.pkl
 │
 ├── donut_filter_training.ipynb             ★ Donut filter training notebook
 │                                           binary CNN: donut vs. not-donut
@@ -66,6 +82,9 @@ aircraft_ML/
 │                                           → (optional) donut filter
 │                                           → phase classifier
 │                                           → CSV + time-series plots
+│                                           → writes predictions back to netCDF
+│                                           includes standalone particle viewer
+│                                           (section 11, no re-run required)
 │
 ├── ── Historical / Reference ────────────────────────────────────────
 │
@@ -82,8 +101,14 @@ aircraft_ML/
     │   └── features_only_seed42.keras
     ├── data_splits_ablation/
     │   └── data_splits_seed42.pkl          ← train/val/test splits + scaler
-    └── donut_filter_results/
-        └── donut_filter_model.keras        ← donut filter model
+    ├── donut_filter_results/
+    │   └── donut_filter_model.keras        ← donut filter model
+    ├── hybrid_synthetic_results/           ← produced by hybrid_model_synthetic.ipynb
+    │   ├── hybrid_synthetic_model.keras
+    │   └── scaler.pkl
+    └── inference_results/                  ← produced by particle_phase_inference.ipynb
+        ├── particle_phase_predictions.csv
+        ├── *_classified.nc                 ← original PBP files + phase predictions
 ```
 
 ---
@@ -109,6 +134,17 @@ Open and run **`particle_classification_ablation_study.ipynb`** top to bottom.
 - Saves the best model per variant to `ablation_results/`
 - Saves the fitted `StandardScaler` inside `data_splits_ablation/data_splits_seed42.pkl`
 
+### Step 2a (alternative) — Train on synthetic data
+
+If using synthetic particle data instead of (or in addition to) real flight data, run **`hybrid_model_synthetic.ipynb`**:
+
+- Loads `synthetic_particle_metadata.csv` and `synthetic_particle_images_filtered/`
+- Applies the pre-trained CNN donut filter to remove mislabeled out-of-focus artifacts before training
+- Trains the same hybrid architecture as the ablation study (2 classes: Liquid / Ice)
+- Saves model and scaler to `hybrid_synthetic_results/`
+
+Requires `donut_filter_training.ipynb` to have been run first.
+
 ### Step 3 — Train the donut filter (optional but recommended)
 
 Open and run **`donut_filter_training.ipynb`** top to bottom.
@@ -132,7 +168,11 @@ DONUT_MODEL_PATH = './donut_filter_results/donut_filter_model.keras'
 DONUT_THRESHOLD  = 0.5    # tune from threshold_sensitivity.png
 ```
 
-Run the notebook top to bottom. Outputs land in `inference_results/`.
+Run the notebook top to bottom. Outputs land in `inference_results/`:
+- `particle_phase_predictions.csv` — per-particle predictions
+- `*_classified.nc` — original PBP netCDF files with three new variables added: `phase_predicted`, `phase_prob_liquid`, `phase_prob_solid`
+
+To re-inspect particles after closing the notebook, run only the Configuration and Helper Functions cells, then run **Section 11 (Quick Particle Viewer)** — no need to re-run inference.
 
 ---
 
@@ -140,26 +180,27 @@ Run the notebook top to bottom. Outputs land in `inference_results/`.
 
 ### Phase Classifier — Hybrid CNN
 
-The primary model takes two inputs and predicts Liquid (0) vs. Solid (1):
+The primary model takes two inputs and predicts Liquid (0) vs. Solid (1).
+Architecture from the ablation study (37,634 parameters):
 
 ```text
-Image branch                     Feature branch
-128×128×1 grayscale              [arearatio]  ← area / bounding-box area
-    │                                │
-Conv2D(32) → BN → Pool → Drop   Dense(16) → ReLU → Drop(0.2)
-Conv2D(64) → BN → Pool → Drop       │
-Conv2D(128) → BN → Pool → Drop      │
-Conv2D(128) → BN → Pool → Drop      │
-Flatten → Dense(128) ────────────────┤
-                              Concatenate (160-dim)
-                                    │
-                     Dense(256, ReLU, L2) → Drop(0.3)
-                     Dense(128, ReLU)     → Drop(0.5)
-                     Dense(64,  ReLU)     → Drop(0.3)
-                     Dense(2,   Softmax)
+Image branch                        Feature branch
+128×128×1 grayscale                 [arearatio, aspectratio]
+    │                                       │
+Conv2D(16) → BN → MaxPool(2×2)      Dense(128) → Drop(0.2)
+Conv2D(32) → BN → MaxPool(4×4)      Dense(64)  → Drop(0.2)
+GlobalAveragePooling2D              Dense(32)  → Drop(0.2)
+Dense(32, ReLU) ─────────────────────────────┤
+                                  Concatenate (64-dim)
+                                        │
+                           sigmoid gate (Multiply — gated fusion)
+                                        │
+                            Dense(128, ReLU) → Drop(0.2)
+                            Dense(64,  ReLU) → Drop(0.2)
+                            Dense(2,   Softmax)
 ```
 
-**Feature used:** `arearatio` — the ratio of particle area to its filled bounding-box area. Chosen after testing for feature leakage; captures shape compactness without introducing temperature signal.
+**Features used:** `arearatio` (area / filled area) and `aspectratio` (minor / major axis). Both capture shape morphology without introducing temperature signal.
 
 ### Donut Filter — Image-Only CNN
 
@@ -189,7 +230,7 @@ Runs before the phase classifier. Particles with P(donut) ≥ `DONUT_THRESHOLD` 
 | **Noise (phase 3)** | 700 |
 | **Binary labeled set (liquid + solid)** | 4,252 |
 | **Image format** | 128×128 px grayscale PNG, white background |
-| **Scalar feature** | `arearatio` (1 feature) |
+| **Scalar features** | `arearatio`, `aspectratio` (2 features) |
 
 ---
 
@@ -211,7 +252,9 @@ The CNN donut filter (`DONUT_FILTER = True`) provides an additional learned chec
 
 ## Inference Output
 
-`inference_results/particle_phase_predictions.csv` — one row per particle:
+### CSV — `inference_results/particle_phase_predictions.csv`
+
+One row per classified particle:
 
 | Column | Description |
 | --- | --- |
@@ -226,5 +269,17 @@ The CNN donut filter (`DONUT_FILTER = True`) provides an additional learned chec
 | `confidence` | max probability (phase confidence, or donut_prob for flagged particles) |
 | `is_donut` | bool — only present when `DONUT_FILTER = True` |
 | `donut_prob` | P(donut) — only present when `DONUT_FILTER = True` |
+
+### NetCDF — `inference_results/*_classified.nc`
+
+A copy of each input PBP file with three variables added along the `Time` dimension:
+
+| Variable | Type | Description |
+| --- | --- | --- |
+| `phase_predicted` | int8 | 0 = Liquid, 1 = Solid, 2 = Donut, −1 = excluded by quality filter |
+| `phase_prob_liquid` | float32 | P(Liquid); NaN for excluded or donut-flagged particles |
+| `phase_prob_solid` | float32 | P(Solid); NaN for excluded or donut-flagged particles |
+
+The `Time` dimension matches the original file exactly — unclassified particles receive fill values rather than being dropped.
 
 ---
