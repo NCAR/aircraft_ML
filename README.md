@@ -86,6 +86,16 @@ aircraft_ML/
 │                                           includes standalone particle viewer
 │                                           (section 11, no re-run required)
 │
+├── ── Evaluation ────────────────────────────────────────────────────
+│
+├── check_classification_accuracy.py        evaluate inference results against
+│                                           temperature-based ground truth
+│                                           particles before last warm time
+│                                           (ATX >= 1 C) → expected Liquid
+│                                           particles after first cold time
+│                                           (ATX <= -40 C) → expected Solid
+│                                           reports per-probe and combined accuracy
+│
 ├── ── Historical / Reference ────────────────────────────────────────
 │
 ├── particle_classification_CNN.ipynb       earlier 4-class hybrid CNN iteration
@@ -173,6 +183,16 @@ Run the notebook top to bottom. Outputs land in `inference_results/`:
 - `*_classified.nc` — original PBP netCDF files with three new variables added: `phase_predicted`, `phase_prob_liquid`, `phase_prob_solid`
 
 To re-inspect particles after closing the notebook, run only the Configuration and Helper Functions cells, then run **Section 11 (Quick Particle Viewer)** — no need to re-run inference.
+
+### Step 5 — Check accuracy against temperature ground truth
+
+After running inference, evaluate how well the model performs on particles from unambiguous temperature regions:
+
+```bash
+python3 check_classification_accuracy.py
+```
+
+Edit the paths at the top of the script to point to your predictions CSV and environmental netCDF file. The script assigns ground truth labels using the same time-cutoff logic as `process_particle_data.py` (last warm time for liquid, first cold time for solid), then reports liquid accuracy, solid accuracy, and overall accuracy per probe and combined.
 
 ---
 
